@@ -42,6 +42,7 @@ public class CustomerValidationTest {
             wireMock.start();
             stubErrorEndpoints(wireMock);
             baseUrl = "http://localhost:" + wireMock.port();
+            System.out.println("Started WireMock at " + baseUrl);
         }
         RestAssured.baseURI = baseUrl;
     }

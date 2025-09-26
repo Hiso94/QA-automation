@@ -80,6 +80,13 @@
       <version>${swagger.validator.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- Playwright for UI smoke tests -->
+    <dependency>
+      <groupId>com.microsoft.playwright</groupId>
+      <artifactId>playwright</artifactId>
+      <version>1.46.0</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
