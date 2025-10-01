@@ -160,7 +160,7 @@ public class CustomerDbAssertionsTest {
             
             Map<String, Object> payload2 = new HashMap<>();
             payload2.put("name", "Dup2");
-            payload2.put("email", email);
+            payload2.put("email", email);       
             payload2.put("phone", RandomData.randomPhone());
             RestAssured.given().contentType(ContentType.JSON).body(payload2)
                 .when().post("/api/customers").then().statusCode(409);
@@ -174,7 +174,7 @@ public class CustomerDbAssertionsTest {
             RestAssured.given().contentType(ContentType.JSON).body(payload)
                 .when().post("/api/customers").then().statusCode(409);
         }
-    }
+    }    
 }
 
 

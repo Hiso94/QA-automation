@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 
-# Set the port
+
 PORT = 8080
 
 class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
