@@ -3,6 +3,10 @@ name: Debug Test Execution
 on:
   workflow_dispatch:  # Manual trigger only for debugging
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   debug-tests:
     runs-on: ubuntu-latest

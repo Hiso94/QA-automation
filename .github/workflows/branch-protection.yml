@@ -5,6 +5,11 @@ on:
     branches: [ main ]
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
 jobs:
   required-tests:
     runs-on: ubuntu-latest

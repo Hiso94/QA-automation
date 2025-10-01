@@ -13,6 +13,11 @@ on:
       - '**/ContractTest.java'
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
 jobs:
   contract-validation:
     runs-on: ubuntu-latest
