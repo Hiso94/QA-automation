@@ -1,0 +1,172 @@
+name: Publish Test Reports (Simple)
+
+on:
+  workflow_run:
+    workflows: ["Smoke Tests CI", "Nightly Full Test Suite"]
+    types:
+      - completed
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: read
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  publish-reports:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Set up JDK 17 (for manual trigger)
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Run tests and generate reports (manual trigger)
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        mvn test -Dmaven.test.failure.ignore=true -Dallure.results.directory=target/allure-results
+        mvn surefire-report:report-only site -DgenerateReports=false
+        mvn allure:report
+        
+    - name: Create consolidated report site
+      run: |
+        mkdir -p _site
+        
+        # Create main index page
+        cat > _site/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>QA Automation - Test Reports</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f8f9fa; }
+                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem 0; text-align: center; }
+                .header h1 { margin: 0; font-size: 2.5rem; }
+                .header p { margin: 0.5rem 0 0 0; opacity: 0.9; }
+                .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+                .reports-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; margin: 2rem 0; }
+                .report-card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s, box-shadow 0.2s; }
+                .report-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+                .report-card h3 { color: #2c3e50; margin: 0 0 1rem 0; font-size: 1.3rem; }
+                .report-card p { color: #6c757d; margin: 0 0 1.5rem 0; line-height: 1.5; }
+                .btn-group { display: flex; gap: 1rem; flex-wrap: wrap; }
+                .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s; display: inline-block; }
+                .btn-primary { background: #007bff; color: white; }
+                .btn-primary:hover { background: #0056b3; }
+                .btn-secondary { background: #6c757d; color: white; }
+                .btn-secondary:hover { background: #545b62; }
+                .status-badge { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.875rem; font-weight: 500; }
+                .status-success { background: #d4edda; color: #155724; }
+                .status-info { background: #d1ecf1; color: #0c5460; }
+                .footer { text-align: center; margin-top: 3rem; padding: 2rem; background: white; border-radius: 12px; color: #6c757d; }
+                .icon { font-size: 1.5rem; margin-right: 0.5rem; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🧪 QA Automation Test Reports</h1>
+                <p>Comprehensive test results and quality metrics</p>
+            </div>
+            
+            <div class="container">
+        EOF
+        
+        # Check if we have current test reports
+        if [ -d "target/site" ] || [ -d "target/allure-report" ]; then
+          cat >> _site/index.html << EOF
+                <div class="reports-grid">
+                    <div class="report-card">
+                        <h3><span class="icon">📊</span>Latest Test Results</h3>
+                        <p>Most recent test execution results with detailed analysis and metrics.</p>
+                        <div class="status-badge status-success">✅ Reports Available</div>
+                        <div class="btn-group" style="margin-top: 1rem;">
+        EOF
+          
+          # Copy current reports if they exist
+          if [ -d "target/site" ]; then
+            cp -r target/site/* _site/ 2>/dev/null || true
+            echo '                            <a href="./surefire-report.html" class="btn btn-primary">📈 Surefire Report</a>' >> _site/index.html
+          fi
+          
+          if [ -d "target/allure-report" ]; then
+            mkdir -p _site/allure-report
+            cp -r target/allure-report/* _site/allure-report/ 2>/dev/null || true
+            echo '                            <a href="./allure-report/index.html" class="btn btn-secondary">🎯 Allure Report</a>' >> _site/index.html
+          fi
+          
+          cat >> _site/index.html << EOF
+                        </div>
+                    </div>
+                </div>
+        EOF
+        else
+          # No reports available
+          cat >> _site/index.html << EOF
+                <div class="reports-grid">
+                    <div class="report-card">
+                        <h3><span class="icon">⏳</span>Test Reports</h3>
+                        <p>Test reports will appear here after running your CI workflows. Run tests to see detailed results.</p>
+                        <div class="status-badge status-info">ℹ️ Waiting for Test Runs</div>
+                        <div class="btn-group" style="margin-top: 1rem;">
+                            <a href="${{ github.server_url }}/${{ github.repository }}/actions" class="btn btn-primary">🚀 Run Tests</a>
+                        </div>
+                    </div>
+                </div>
+        EOF
+        fi
+        
+        # Close HTML
+        cat >> _site/index.html << EOF
+                
+                <div class="footer">
+                    <p>
+                        📅 Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | 
+                        🔄 Trigger: ${{ github.event_name }} |
+                        📋 <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" target="_blank">Workflow Run</a>
+                    </p>
+                    <p style="margin-top: 1rem; font-size: 0.875rem;">
+                        Reports are automatically updated after each test workflow completion.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        EOF
+        
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: ./_site
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v3
+      
+    - name: Summary
+      run: |
+        echo "## 📊 Test Reports Published" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Site URL**: ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+        echo "🔄 **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "📅 **Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Available Reports" >> $GITHUB_STEP_SUMMARY
+        echo "- 📈 Surefire HTML Reports" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Allure Interactive Reports" >> $GITHUB_STEP_SUMMARY

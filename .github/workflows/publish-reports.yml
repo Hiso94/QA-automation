@@ -1,0 +1,196 @@
+name: Publish Test Reports
+
+on:
+  workflow_run:
+    workflows: ["Smoke Tests CI", "Nightly Full Test Suite"]
+    types:
+      - completed
+  workflow_dispatch:  # Allow manual trigger
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: read
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  collect-reports:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+    - name: Download artifacts from triggering workflow
+      if: github.event_name == 'workflow_run'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+             owner: context.repo.owner,
+             repo: context.repo.repo,
+             run_id: ${{ github.event.workflow_run.id }},
+          });
+          
+          for (const artifact of allArtifacts.data.artifacts) {
+            if (artifact.name.includes('test-results') || artifact.name.includes('allure-results')) {
+              let download = await github.rest.actions.downloadArtifact({
+                 owner: context.repo.owner,
+                 repo: context.repo.repo,
+                 artifact_id: artifact.id,
+                 archive_format: 'zip',
+              });
+              
+              let fs = require('fs');
+              fs.writeFileSync(`${artifact.name}.zip`, Buffer.from(download.data));
+            }
+          }
+          
+    - name: Extract artifacts
+      if: github.event_name == 'workflow_run'
+      run: |
+        mkdir -p reports/extracted
+        for file in *.zip; do
+          if [ -f "$file" ]; then
+            echo "Extracting $file"
+            unzip -q "$file" -d "reports/extracted/${file%.zip}"
+          fi
+        done
+        
+    - name: Checkout for manual trigger
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17 for manual trigger
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Run tests and generate reports for manual trigger
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        mvn test -Dmaven.test.failure.ignore=true
+        mvn surefire-report:report-only site -DgenerateReports=false
+        mvn allure:report
+        mkdir -p reports/extracted/manual
+        cp -r target/site reports/extracted/manual/
+        cp -r target/allure-report reports/extracted/manual/
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Create consolidated HTML report
+      run: |
+        mkdir -p _site
+        
+        # Create main index page
+        cat > _site/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>QA Automation - Test Reports</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
+                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                .header { text-align: center; margin-bottom: 40px; }
+                .header h1 { color: #2c3e50; margin: 0; }
+                .header p { color: #7f8c8d; margin: 5px 0 0 0; }
+                .reports-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+                .report-card { background: #fff; border: 1px solid #e1e8ed; border-radius: 8px; padding: 20px; transition: box-shadow 0.3s; }
+                .report-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+                .report-card h3 { margin: 0 0 10px 0; color: #2c3e50; }
+                .report-card p { color: #7f8c8d; margin: 0 0 15px 0; }
+                .report-card a { display: inline-block; background: #3498db; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; transition: background 0.3s; }
+                .report-card a:hover { background: #2980b9; }
+                .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+                .status.success { background: #d4edda; color: #155724; }
+                .status.failure { background: #f8d7da; color: #721c24; }
+                .timestamp { color: #6c757d; font-size: 14px; margin-top: 20px; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🧪 QA Automation Test Reports</h1>
+                    <p>Comprehensive test results and quality metrics</p>
+                </div>
+                
+                <div class="reports-grid">
+        EOF
+        
+        # Process each extracted report
+        for dir in reports/extracted/*/; do
+          if [ -d "$dir" ]; then
+            dirname=$(basename "$dir")
+            echo "Processing $dirname"
+            
+            # Copy reports to _site
+            if [ -d "$dir/target/site" ]; then
+              mkdir -p "_site/surefire-reports/$dirname"
+              cp -r "$dir/target/site"/* "_site/surefire-reports/$dirname/" 2>/dev/null || true
+            fi
+            
+            if [ -d "$dir/target/allure-report" ]; then
+              mkdir -p "_site/allure-reports/$dirname"
+              cp -r "$dir/target/allure-report"/* "_site/allure-reports/$dirname/" 2>/dev/null || true
+            fi
+            
+            # Add report card to index
+            cat >> _site/index.html << EOF
+                    <div class="report-card">
+                        <h3>📊 $dirname Report</h3>
+                        <p>Test execution results and detailed analysis</p>
+                        <div style="margin: 10px 0;">
+                            <a href="./surefire-reports/$dirname/surefire-report.html">📈 Surefire HTML Report</a>
+                            <a href="./allure-reports/$dirname/index.html" style="margin-left: 10px;">🎯 Allure Report</a>
+                        </div>
+                    </div>
+        EOF
+          fi
+        done
+        
+        # Close HTML
+        cat >> _site/index.html << EOF
+                </div>
+                
+                <div class="timestamp">
+                    📅 Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | 
+                    🔄 Workflow: ${{ github.event.workflow_run.name || 'Manual' }} |
+                    📋 Run: <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" target="_blank">${{ github.run_id }}</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        EOF
+        
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: ./_site
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: collect-reports
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v3
+        
+      - name: Comment deployment URL
+        if: github.event.workflow_run.event == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deploymentUrl = '${{ steps.deployment.outputs.page_url }}';
+            const comment = `## 📊 Test Reports Published\n\n✅ **Reports are now available**: ${deploymentUrl}\n\n- 📈 **Surefire Reports**: Detailed HTML test results\n- 🎯 **Allure Reports**: Interactive test execution reports\n- 📋 **Workflow**: ${{ github.event.workflow_run.name }}\n\nReports are automatically updated after each test run.`;
+            
+            // This will need the PR number - for now just log the URL
+            console.log('Test reports deployed to:', deploymentUrl);

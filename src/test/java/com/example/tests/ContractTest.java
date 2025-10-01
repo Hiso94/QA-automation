@@ -4,6 +4,12 @@ import com.example.util.Config;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.extension.responsetemplating.ResponseTemplateTransformer;
+import io.qameta.allure.Description;
+import io.qameta.allure.Epic;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Severity;
+import io.qameta.allure.SeverityLevel;
+import io.qameta.allure.Story;
 import io.restassured.RestAssured;
 import io.restassured.filter.Filter;
 import io.restassured.http.ContentType;
@@ -22,6 +28,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.hamcrest.Matchers.*;
 
+@Epic("API Contract Validation")
+@Feature("OpenAPI Contract Testing")
 public class ContractTest {
 
     private static WireMockServer wireMock;
@@ -73,6 +81,9 @@ public class ContractTest {
     }
 
     @Test
+    @Story("Health endpoint contract validation")
+    @Severity(SeverityLevel.BLOCKER)
+    @Description("Validate that health endpoint response matches OpenAPI specification exactly")
     void healthContract() {
         RestAssured.given().filter(openApi)
             .when().get("/actuator/health")
@@ -80,6 +91,9 @@ public class ContractTest {
     }
 
     @Test
+    @Story("Customer list contract validation")
+    @Severity(SeverityLevel.CRITICAL)
+    @Description("Validate that GET /api/customers response structure matches OpenAPI contract")
     void listCustomersContract() {
         RestAssured.given().filter(openApi)
             .when().get("/api/customers")
@@ -87,6 +101,9 @@ public class ContractTest {
     }
 
     @Test
+    @Story("Customer creation contract validation")
+    @Severity(SeverityLevel.CRITICAL)
+    @Description("Validate that POST /api/customers request/response matches OpenAPI specification")
     void createCustomerContract() {
         Map<String, Object> payload = new HashMap<>();
         payload.put("name", "N");

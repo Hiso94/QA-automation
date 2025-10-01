@@ -1,0 +1,128 @@
+name: Setup GitHub Pages (One-time)
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-setup"
+  cancel-in-progress: false
+
+jobs:
+  setup-pages:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Create initial GitHub Pages site
+      run: |
+        mkdir -p _site
+        
+        cat > _site/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>QA Automation - Test Reports</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    margin: 40px; 
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .container { 
+                    max-width: 800px; 
+                    background: white; 
+                    padding: 40px; 
+                    border-radius: 15px; 
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                    text-align: center;
+                }
+                h1 { color: #2c3e50; margin: 0 0 20px 0; font-size: 2.5em; }
+                p { color: #7f8c8d; margin: 10px 0; font-size: 1.1em; line-height: 1.6; }
+                .status { 
+                    background: #3498db; 
+                    color: white; 
+                    padding: 15px 30px; 
+                    border-radius: 25px; 
+                    display: inline-block; 
+                    margin: 20px 0;
+                    font-weight: bold;
+                }
+                .next-steps {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-top: 30px;
+                    text-align: left;
+                }
+                .next-steps h3 {
+                    color: #2c3e50;
+                    margin-top: 0;
+                }
+                .next-steps ol {
+                    color: #555;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🧪 QA Automation</h1>
+                <p>Welcome to the QA Automation Test Reports site!</p>
+                
+                <div class="status">✅ GitHub Pages Configured Successfully</div>
+                
+                <p>This site will automatically display comprehensive test reports including:</p>
+                <ul style="text-align: left; display: inline-block;">
+                    <li>📊 Surefire HTML Reports</li>
+                    <li>🎯 Interactive Allure Reports</li>
+                    <li>📈 Test Execution History</li>
+                    <li>🔍 Detailed Failure Analysis</li>
+                </ul>
+                
+                <div class="next-steps">
+                    <h3>🚀 Next Steps</h3>
+                    <ol>
+                        <li>Run your test workflows (smoke tests, nightly tests)</li>
+                        <li>Reports will be automatically published here</li>
+                        <li>Each test run creates a new report section</li>
+                        <li>View detailed results and quality metrics</li>
+                    </ol>
+                </div>
+                
+                <p style="margin-top: 30px; color: #6c757d; font-size: 0.9em;">
+                    Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+                </p>
+            </div>
+        </body>
+        </html>
+        EOF
+        
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: ./_site
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v3
+      
+    - name: Output Pages URL
+      run: |
+        echo "🎉 GitHub Pages site deployed!"
+        echo "📊 Your test reports will be available at: ${{ steps.deployment.outputs.page_url }}"
+        echo "🔄 Run test workflows to see reports published automatically"

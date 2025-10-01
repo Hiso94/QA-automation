@@ -3,6 +3,12 @@ package com.example.tests;
 import com.example.util.Config;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import io.qameta.allure.Description;
+import io.qameta.allure.Epic;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Severity;
+import io.qameta.allure.SeverityLevel;
+import io.qameta.allure.Story;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -13,6 +19,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.hamcrest.Matchers.equalTo;
 
+@Epic("Application Health Monitoring")
+@Feature("Health Check API")
 public class HealthCheckTest {
 
     private static WireMockServer wireMock;
@@ -44,6 +52,9 @@ public class HealthCheckTest {
     }
 
     @Test
+    @Story("Health endpoint availability")
+    @Severity(SeverityLevel.BLOCKER)
+    @Description("Verify that the health endpoint returns HTTP 200 status code, indicating the application is running")
     void healthEndpointReturns200() {
         RestAssured
             .given()
@@ -54,6 +65,9 @@ public class HealthCheckTest {
     }
 
     @Test
+    @Story("Health endpoint response validation")
+    @Severity(SeverityLevel.CRITICAL)
+    @Description("Verify that the health endpoint returns proper JSON response with status 'UP' when application is healthy")
     void healthPayloadHasStatusUpWhenStubbed() {
         if (wireMock == null) {
             return; // when pointing at real system, we only assert status code in smoke

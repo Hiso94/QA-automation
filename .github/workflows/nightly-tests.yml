@@ -1,0 +1,154 @@
+name: Nightly Full Test Suite
+
+on:
+  schedule:
+    # Run nightly at 2 AM UTC (adjust timezone as needed)
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  full-test-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    strategy:
+      matrix:
+        java-version: [17, 21]  # Test against multiple Java versions
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK ${{ matrix.java-version }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java-version }}
+        distribution: 'temurin'
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ matrix.java-version }}-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-m2-${{ matrix.java-version }}-
+          ${{ runner.os }}-m2-
+          
+    - name: Install Playwright dependencies
+      run: |
+        mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+        
+    - name: Start Swagger Server (Background)
+      run: |
+        chmod +x start-swagger-server.sh
+        ./start-swagger-server.sh &
+        sleep 10  # Give server time to start
+        
+    - name: Run Full Test Suite
+      run: |
+        mvn clean test \
+          -Dmaven.test.failure.ignore=true \
+          -Dallure.results.directory=target/allure-results \
+          -DfailIfNoTests=false
+          
+    - name: Contract Validation Tests
+      run: |
+        # Run specific contract validation tests
+        mvn test -Dtest="ContractTest" \
+          -Dmaven.test.failure.ignore=false \
+          -Dfailsafe.failIfNoSpecifiedTests=false
+          
+    - name: Database Integration Tests
+      run: |
+        # Run database-specific tests
+        mvn test -Dtest="Customer*DbAssertions*" \
+          -Dmaven.test.failure.ignore=true
+          
+    - name: Security Tests
+      run: |
+        # Run security-specific tests
+        mvn test -Dtest="Security*" \
+          -Dmaven.test.failure.ignore=true
+          
+    - name: Generate Comprehensive Reports
+      if: always()
+      run: |
+        mvn surefire-report:report-only site -DgenerateReports=false
+        mvn allure:report
+        
+    - name: Check for Test Failures
+      if: always()
+      run: |
+        # Check if any critical tests failed
+        if [ -f target/surefire-reports/TEST-*.xml ]; then
+          FAILURES=$(grep -c 'failures="[1-9]' target/surefire-reports/TEST-*.xml || echo "0")
+          ERRORS=$(grep -c 'errors="[1-9]' target/surefire-reports/TEST-*.xml || echo "0")
+          
+          echo "Test Failures: $FAILURES"
+          echo "Test Errors: $ERRORS"
+          
+          if [ "$FAILURES" -gt "0" ] || [ "$ERRORS" -gt "0" ]; then
+            echo "::warning::Critical test failures detected in nightly run"
+            # Don't fail the workflow for nightly runs, but create an issue
+          fi
+        fi
+        
+    - name: Upload Complete Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: nightly-test-results-java-${{ matrix.java-version }}
+        path: |
+          target/surefire-reports/
+          target/site/
+          target/allure-report/
+          target/screenshots/
+        retention-days: 90
+        
+    - name: Upload Allure Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: allure-results-nightly-java-${{ matrix.java-version }}
+        path: target/allure-results/
+        retention-days: 90
+        
+    - name: Publish Nightly Test Report
+      if: always()
+      uses: dorny/test-reporter@v1
+      with:
+        name: Nightly Tests Report (Java ${{ matrix.java-version }})
+        path: target/surefire-reports/*.xml
+        reporter: java-junit
+        fail-on-error: false  # Don't fail nightly builds
+        
+    - name: Create Issue on Critical Failures
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = 'target/surefire-reports';
+          
+          if (fs.existsSync(path)) {
+            const files = fs.readdirSync(path).filter(f => f.endsWith('.xml'));
+            let issueBody = '## 🚨 Nightly Test Suite Failures\n\n';
+            issueBody += `**Java Version**: ${{ matrix.java-version }}\n`;
+            issueBody += `**Date**: ${new Date().toISOString().split('T')[0]}\n`;
+            issueBody += `**Workflow Run**: [View Details](${context.payload.repository.html_url}/actions/runs/${context.runId})\n\n`;
+            issueBody += '### Test Results\n';
+            issueBody += '- Critical test failures detected in nightly run\n';
+            issueBody += '- Please review the attached reports and investigate\n\n';
+            issueBody += '### Action Required\n';
+            issueBody += '1. Review test failure details in workflow artifacts\n';
+            issueBody += '2. Investigate root cause of failures\n';
+            issueBody += '3. Fix issues and ensure tests pass\n';
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Nightly Test Failures - ${new Date().toISOString().split('T')[0]}`,
+              body: issueBody,
+              labels: ['bug', 'test-failure', 'nightly']
+            });
+          }
