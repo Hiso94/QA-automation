@@ -14,5 +14,6 @@ target/
 # Logs
 *.log
 
-# .gitignore
-db.properties
+# Database configuration files (contain sensitive credentials)
+src/test/resources/db.properties
+**/db.properties

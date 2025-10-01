@@ -1,0 +1,14 @@
+# Database Configuration Template
+# Copy this file to db.properties and fill in your actual database credentials
+# 
+# For AWS RDS PostgreSQL Database:
+db.url=jdbc:postgresql://your-database-host:5432/your-database-name
+db.user=your-username
+db.password=your-password
+db.schema=public
+
+# Example:
+# db.url=jdbc:postgresql://database-1.cwts48ku0g15.us-east-1.rds.amazonaws.com:5432/database-1
+# db.user=Hiso94
+# db.password=YourSecretPassword
+# db.schema=public
