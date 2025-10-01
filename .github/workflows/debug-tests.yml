@@ -1,0 +1,76 @@
+name: Debug Test Execution
+
+on:
+  workflow_dispatch:  # Manual trigger only for debugging
+
+jobs:
+  debug-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: Check Java and Maven versions
+      run: |
+        java -version
+        mvn -version
+        
+    - name: Compile project
+      run: mvn clean compile test-compile
+      
+    - name: Run only HealthCheck tests (should pass)
+      run: |
+        echo "=== Running HealthCheck tests ==="
+        mvn test -Dtest="HealthCheckTest" -Dmaven.test.failure.ignore=false
+        echo "=== HealthCheck tests completed ==="
+        
+    - name: Run SwaggerUI tests (may skip)
+      run: |
+        echo "=== Running SwaggerUI tests ==="
+        mvn test -Dtest="SwaggerUiSmokeTest" -Dmaven.test.failure.ignore=true -DfailIfNoTests=false
+        echo "=== SwaggerUI tests completed ==="
+        
+    - name: Check test results
+      run: |
+        echo "=== Checking test results ==="
+        if [ -d "target/surefire-reports" ]; then
+          echo "Surefire reports found:"
+          ls -la target/surefire-reports/
+          echo "=== Test summaries ==="
+          for file in target/surefire-reports/TEST-*.xml; do
+            if [ -f "$file" ]; then
+              echo "File: $(basename $file)"
+              grep -o 'tests="[^"]*"' "$file" || echo "No tests attribute found"
+              grep -o 'failures="[^"]*"' "$file" || echo "No failures attribute found"
+              grep -o 'errors="[^"]*"' "$file" || echo "No errors attribute found"
+              grep -o 'skipped="[^"]*"' "$file" || echo "No skipped attribute found"
+              echo "---"
+            fi
+          done
+        else
+          echo "No surefire reports directory found"
+        fi
+        
+    - name: Upload test results for analysis
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-test-results
+        path: |
+          target/surefire-reports/
+          target/test-classes/
+        retention-days: 7
