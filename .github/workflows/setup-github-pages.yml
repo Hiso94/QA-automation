@@ -1,14 +1,22 @@
 name: Setup GitHub Pages (One-time) - DISABLED
 
-# Disabled - Using artifact-based reporting instead
+# COMPLETELY DISABLED - Using artifact-based reporting instead
+# This workflow is disabled to prevent Pages deployment errors
+# Artifact-based reporting provides better reliability and easier access
 on:
-  schedule:
-    - cron: '0 0 31 2 *'  # Never runs (Feb 31st doesn't exist)
+  # Completely disabled - no triggers at all
+  workflow_dispatch:
+    inputs:
+      confirm_enable:
+        description: 'Type "ENABLE_PAGES" to manually enable this workflow'
+        required: true
+        type: string
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 concurrency:
   group: "pages-setup"
@@ -17,13 +25,16 @@ concurrency:
 jobs:
   setup-pages:
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm_enable == 'ENABLE_PAGES' }}
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Setup Pages
-      uses: actions/configure-pages@v4
+      uses: actions/configure-pages@v5
+      with:
+        enablement: true
       
     - name: Create initial GitHub Pages site
       run: |

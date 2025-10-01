@@ -7,7 +7,8 @@ on:
       - completed
   workflow_dispatch:  # Allow manual trigger
 
-# Simple artifact-based report publishing (no Pages deployment)
+# ✅ Artifact-based report publishing (no Pages deployment to avoid errors)
+# This approach provides reliable report generation without GitHub Pages complications
 permissions:
   contents: read
   actions: read
