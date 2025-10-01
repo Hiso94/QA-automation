@@ -10,8 +10,6 @@ permissions:
   contents: read
   actions: read
   issues: write
-  checks: write
-  statuses: write
 
 jobs:
   full-test-suite:
@@ -120,42 +118,92 @@ jobs:
         path: target/allure-results/
         retention-days: 90
         
-    - name: Publish Nightly Test Report
+    - name: Parse Nightly Test Results
       if: always()
-      uses: dorny/test-reporter@v1
-      with:
-        name: Nightly Tests Report (Java ${{ matrix.java-version }})
-        path: target/surefire-reports/*.xml
-        reporter: java-junit
-        fail-on-error: false  # Don't fail nightly builds
+      run: |
+        echo "## 🌙 Nightly Test Results (Java ${{ matrix.java-version }})" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -d "target/surefire-reports" ]; then
+          TOTAL_TESTS=0
+          TOTAL_FAILURES=0
+          TOTAL_ERRORS=0
+          TOTAL_SKIPPED=0
+          
+          for file in target/surefire-reports/TEST-*.xml; do
+            if [ -f "$file" ]; then
+              TESTS=$(grep -o 'tests="[0-9]*"' "$file" | cut -d'"' -f2)
+              FAILURES=$(grep -o 'failures="[0-9]*"' "$file" | cut -d'"' -f2)
+              ERRORS=$(grep -o 'errors="[0-9]*"' "$file" | cut -d'"' -f2)
+              SKIPPED=$(grep -o 'skipped="[0-9]*"' "$file" | cut -d'"' -f2)
+              
+              TOTAL_TESTS=$((TOTAL_TESTS + ${TESTS:-0}))
+              TOTAL_FAILURES=$((TOTAL_FAILURES + ${FAILURES:-0}))
+              TOTAL_ERRORS=$((TOTAL_ERRORS + ${ERRORS:-0}))
+              TOTAL_SKIPPED=$((TOTAL_SKIPPED + ${SKIPPED:-0}))
+              
+              CLASSNAME=$(basename "$file" .xml | sed 's/TEST-//')
+              echo "- **$CLASSNAME**: $TESTS tests, $FAILURES failures, $ERRORS errors, $SKIPPED skipped" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎯 **Overall Nightly Results (Java ${{ matrix.java-version }})**" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Tests**: $TOTAL_TESTS" >> $GITHUB_STEP_SUMMARY
+          echo "- **✅ Passed**: $((TOTAL_TESTS - TOTAL_FAILURES - TOTAL_ERRORS - TOTAL_SKIPPED))" >> $GITHUB_STEP_SUMMARY
+          echo "- **❌ Failed**: $TOTAL_FAILURES" >> $GITHUB_STEP_SUMMARY
+          echo "- **🚨 Errors**: $TOTAL_ERRORS" >> $GITHUB_STEP_SUMMARY
+          echo "- **⏭️ Skipped**: $TOTAL_SKIPPED" >> $GITHUB_STEP_SUMMARY
+          
+          # Set environment variable for issue creation
+          echo "NIGHTLY_FAILURES=$TOTAL_FAILURES" >> $GITHUB_ENV
+          echo "NIGHTLY_ERRORS=$TOTAL_ERRORS" >> $GITHUB_ENV
+          
+          if [ $TOTAL_FAILURES -gt 0 ] || [ $TOTAL_ERRORS -gt 0 ]; then
+            echo "- **Status**: ❌ **FAILED**" >> $GITHUB_STEP_SUMMARY
+            echo "::warning::Nightly tests failed with $TOTAL_FAILURES failures and $TOTAL_ERRORS errors"
+          else
+            echo "- **Status**: ✅ **PASSED**" >> $GITHUB_STEP_SUMMARY
+            echo "::notice::All nightly tests passed successfully!"
+          fi
+        else
+          echo "❌ **No test results found**" >> $GITHUB_STEP_SUMMARY
+          echo "::warning::No surefire reports directory found"
+        fi
         
     - name: Create Issue on Critical Failures
-      if: failure()
+      if: always()
       uses: actions/github-script@v7
       with:
         script: |
-          const fs = require('fs');
-          const path = 'target/surefire-reports';
+          const failures = process.env.NIGHTLY_FAILURES || '0';
+          const errors = process.env.NIGHTLY_ERRORS || '0';
           
-          if (fs.existsSync(path)) {
-            const files = fs.readdirSync(path).filter(f => f.endsWith('.xml'));
-            let issueBody = '## 🚨 Nightly Test Suite Failures\n\n';
-            issueBody += `**Java Version**: ${{ matrix.java-version }}\n`;
-            issueBody += `**Date**: ${new Date().toISOString().split('T')[0]}\n`;
-            issueBody += `**Workflow Run**: [View Details](${context.payload.repository.html_url}/actions/runs/${context.runId})\n\n`;
-            issueBody += '### Test Results\n';
-            issueBody += '- Critical test failures detected in nightly run\n';
-            issueBody += '- Please review the attached reports and investigate\n\n';
-            issueBody += '### Action Required\n';
-            issueBody += '1. Review test failure details in workflow artifacts\n';
-            issueBody += '2. Investigate root cause of failures\n';
-            issueBody += '3. Fix issues and ensure tests pass\n';
-            
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `🚨 Nightly Test Failures - ${new Date().toISOString().split('T')[0]}`,
-              body: issueBody,
-              labels: ['bug', 'test-failure', 'nightly']
-            });
+          // Only create issue if there are actual failures or errors
+          if (parseInt(failures) === 0 && parseInt(errors) === 0) {
+            console.log('No failures or errors - skipping issue creation');
+            return;
           }
+          
+          let issueBody = '## 🚨 Nightly Test Suite Failures\n\n';
+          issueBody += `**Java Version**: ${{ matrix.java-version }}\n`;
+          issueBody += `**Date**: ${new Date().toISOString().split('T')[0]}\n`;
+          issueBody += `**Failures**: ${failures}\n`;
+          issueBody += `**Errors**: ${errors}\n`;
+          issueBody += `**Workflow Run**: [View Details](${context.payload.repository.html_url}/actions/runs/${context.runId})\n\n`;
+          issueBody += '### Test Results\n';
+          issueBody += `- ${failures} test failures detected\n`;
+          issueBody += `- ${errors} test errors detected\n`;
+          issueBody += '- Please review the attached reports and investigate\n\n';
+          issueBody += '### Action Required\n';
+          issueBody += '1. Review test failure details in workflow artifacts\n';
+          issueBody += '2. Investigate root cause of failures\n';
+          issueBody += '3. Fix issues and ensure tests pass\n';
+          
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚨 Nightly Test Failures - Java ${{ matrix.java-version }} - ${new Date().toISOString().split('T')[0]}`,
+            body: issueBody,
+            labels: ['bug', 'test-failure', 'nightly']
+          });
