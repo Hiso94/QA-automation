@@ -7,17 +7,10 @@ on:
       - completed
   workflow_dispatch:  # Allow manual trigger
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Simple artifact-based report publishing (no Pages deployment)
 permissions:
   contents: read
-  pages: write
-  id-token: write
   actions: read
-
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
 
 jobs:
   collect-reports:
@@ -82,8 +75,8 @@ jobs:
         cp -r target/site reports/extracted/manual/
         cp -r target/allure-report reports/extracted/manual/
         
-    - name: Setup Pages
-      uses: actions/configure-pages@v4
+    - name: Create Reports Directory
+      run: mkdir -p ./_site
       
     - name: Create consolidated HTML report
       run: |
@@ -171,26 +164,28 @@ jobs:
         </html>
         EOF
         
-    - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+    - name: Upload Combined Reports
+      uses: actions/upload-artifact@v4
       with:
+        name: combined-test-reports-${{ github.run_number }}
         path: ./_site
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: collect-reports
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+        retention-days: 30
         
-      - name: Comment deployment URL
-        if: github.event.workflow_run.event == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const deploymentUrl = '${{ steps.deployment.outputs.page_url }}';
-            const comment = `## 📊 Test Reports Published\n\n✅ **Reports are now available**: ${deploymentUrl}\n\n- 📈 **Surefire Reports**: Detailed HTML test results\n- 🎯 **Allure Reports**: Interactive test execution reports\n- 📋 **Workflow**: ${{ github.event.workflow_run.name }}\n\nReports are automatically updated after each test run.`;
-            
-            // This will need the PR number - for now just log the URL
-            console.log('Test reports deployed to:', deploymentUrl);
+    - name: Generate Report Summary
+      run: |
+        echo "## 📊 Test Reports Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Combined test reports have been generated and uploaded as artifacts**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Available Reports:" >> $GITHUB_STEP_SUMMARY
+        echo "- 📈 **Surefire Reports**: HTML test execution results" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 **Allure Reports**: Interactive test analysis" >> $GITHUB_STEP_SUMMARY
+        echo "- 📋 **Source Workflow**: ${{ github.event.workflow_run.name || 'Manual trigger' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📁 **Artifact Name**: \`combined-test-reports-${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "To view reports:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Go to [Actions tab](${{ github.server_url }}/${{ github.repository }}/actions)" >> $GITHUB_STEP_SUMMARY
+        echo "2. Click on this workflow run" >> $GITHUB_STEP_SUMMARY
+        echo "3. Download the \`combined-test-reports-${{ github.run_number }}\` artifact" >> $GITHUB_STEP_SUMMARY
+        echo "4. Extract and open \`index.html\` in your browser" >> $GITHUB_STEP_SUMMARY

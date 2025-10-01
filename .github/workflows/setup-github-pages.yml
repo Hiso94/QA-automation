@@ -1,7 +1,9 @@
-name: Setup GitHub Pages (One-time)
+name: Setup GitHub Pages (One-time) - DISABLED
 
+# Disabled - Using artifact-based reporting instead
 on:
-  workflow_dispatch:  # Manual trigger only
+  schedule:
+    - cron: '0 0 31 2 *'  # Never runs (Feb 31st doesn't exist)
 
 permissions:
   contents: read
