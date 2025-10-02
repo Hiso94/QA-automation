@@ -2,9 +2,10 @@ name: Smoke Tests CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, test-workflow-trigger ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
 
 permissions:
   contents: read

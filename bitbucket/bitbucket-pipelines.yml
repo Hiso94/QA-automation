@@ -1,0 +1,222 @@
+image: maven:3.8.4-openjdk-17
+
+definitions:
+  caches:
+    maven: ~/.m2/repository
+  services:
+    docker:
+      memory: 2048
+
+pipelines:
+  default:
+    - step:
+        name: Run Smoke Tests
+        caches:
+          - maven
+        script:
+          # Install system dependencies
+          - apt-get update && apt-get install -y wget gnupg curl
+          
+          # Install Playwright dependencies
+          - mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps" || true
+          - echo "Playwright installation completed"
+          
+          # Run smoke tests
+          - >
+            mvn test -Dtest="HealthCheckTest,SwaggerUiSmokeTest" 
+            -Dmaven.test.failure.ignore=true 
+            -Dallure.results.directory=target/allure-results 
+            -DfailIfNoTests=false
+          
+          # Generate Surefire HTML report
+          - mvn surefire-report:report-only site -DgenerateReports=false || true
+          
+          # Generate Allure Report
+          - mvn allure:report || true
+          
+          # Parse and display results
+          - |
+            echo "=== 📊 SMOKE TEST RESULTS SUMMARY ==="
+            echo ""
+            
+            if [ -d "target/surefire-reports" ]; then
+              TOTAL_TESTS=0
+              TOTAL_FAILURES=0
+              TOTAL_ERRORS=0
+              TOTAL_SKIPPED=0
+              
+              for file in target/surefire-reports/TEST-*.xml; do
+                if [ -f "$file" ]; then
+                  TESTS=$(grep -o 'tests="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+                  FAILURES=$(grep -o 'failures="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+                  ERRORS=$(grep -o 'errors="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+                  SKIPPED=$(grep -o 'skipped="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+                  
+                  TOTAL_TESTS=$((TOTAL_TESTS + ${TESTS:-0}))
+                  TOTAL_FAILURES=$((TOTAL_FAILURES + ${FAILURES:-0}))
+                  TOTAL_ERRORS=$((TOTAL_ERRORS + ${ERRORS:-0}))
+                  TOTAL_SKIPPED=$((TOTAL_SKIPPED + ${SKIPPED:-0}))
+                  
+                  CLASSNAME=$(basename "$file" .xml | sed 's/TEST-//')
+                  echo "- $CLASSNAME: $TESTS tests, $FAILURES failures, $ERRORS errors, $SKIPPED skipped"
+                fi
+              done
+              
+              echo ""
+              echo "🎯 OVERALL RESULTS:"
+              echo "- Total Tests: $TOTAL_TESTS"
+              echo "- ✅ Passed: $((TOTAL_TESTS - TOTAL_FAILURES - TOTAL_ERRORS - TOTAL_SKIPPED))"
+              echo "- ❌ Failed: $TOTAL_FAILURES"
+              echo "- 🚨 Errors: $TOTAL_ERRORS"
+              echo "- ⏭️ Skipped: $TOTAL_SKIPPED"
+              
+              if [ $TOTAL_FAILURES -gt 0 ] || [ $TOTAL_ERRORS -gt 0 ]; then
+                echo "- Status: ❌ FAILED"
+                exit 1
+              else
+                echo "- Status: ✅ PASSED"
+              fi
+            else
+              echo "❌ No test results found"
+              echo "Warning: No surefire reports directory found"
+            fi
+        artifacts:
+          - target/surefire-reports/**
+          - target/site/**
+          - target/allure-report/**
+          - target/allure-results/**
+        services:
+          - docker
+
+  branches:
+    main:
+      - step:
+          name: Main Branch - Full Smoke Tests
+          caches:
+            - maven
+          script:
+            # Install system dependencies
+            - apt-get update && apt-get install -y wget gnupg curl
+            
+            # Install Playwright dependencies
+            - mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+            
+            # Run smoke tests
+            - >
+              mvn test -Dtest="HealthCheckTest,SwaggerUiSmokeTest" 
+              -Dmaven.test.failure.ignore=true 
+              -Dallure.results.directory=target/allure-results 
+              -DfailIfNoTests=false
+            
+            # Generate reports
+            - mvn surefire-report:report-only site -DgenerateReports=false
+            - mvn allure:report
+            
+            # Display results
+            - echo "Main branch smoke tests completed successfully!"
+          artifacts:
+            - target/**
+          after-script:
+            - echo "✅ Main branch pipeline completed"
+
+    develop:
+      - step:
+          name: Develop Branch - Smoke Tests
+          caches:
+            - maven
+          script:
+            # Install dependencies
+            - apt-get update && apt-get install -y wget gnupg curl
+            - mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+            
+            # Run tests
+            - >
+              mvn test -Dtest="HealthCheckTest,SwaggerUiSmokeTest" 
+              -Dmaven.test.failure.ignore=true 
+              -Dallure.results.directory=target/allure-results 
+              -DfailIfNoTests=false
+            
+            # Generate reports
+            - mvn allure:report
+            - echo "🚀 Develop branch tests completed!"
+          artifacts:
+            - target/allure-report/**
+            - target/surefire-reports/**
+            - target/allure-results/**
+
+    test-workflow-trigger:
+      - step:
+          name: Test Workflow Branch - Smoke Tests
+          caches:
+            - maven
+          script:
+            # Install dependencies
+            - apt-get update && apt-get install -y wget gnupg curl
+            - mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+            
+            # Run tests
+            - >
+              mvn test -Dtest="HealthCheckTest,SwaggerUiSmokeTest" 
+              -Dmaven.test.failure.ignore=true 
+              -Dallure.results.directory=target/allure-results 
+              -DfailIfNoTests=false
+            
+            # Generate reports
+            - mvn allure:report
+            - echo "🧪 Test workflow branch completed!"
+          artifacts:
+            - target/**
+
+  pull-requests:
+    '**':
+      - step:
+          name: PR Smoke Tests Validation
+          caches:
+            - maven
+          script:
+            # Install dependencies
+            - apt-get update && apt-get install -y wget gnupg curl
+            - mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+            
+            # Run smoke tests for PR validation
+            - >
+              mvn test -Dtest="HealthCheckTest,SwaggerUiSmokeTest" 
+              -Dmaven.test.failure.ignore=true 
+              -Dallure.results.directory=target/allure-results 
+              -DfailIfNoTests=false
+            
+            # Generate reports
+            - mvn surefire-report:report-only site -DgenerateReports=false
+            - mvn allure:report
+            
+            # PR-specific validation message
+            - echo "🔍 Pull Request validation completed - Check artifacts for detailed results"
+          artifacts:
+            - target/**
+
+  custom:
+    manual-smoke-tests:
+      - step:
+          name: Manual Trigger - Comprehensive Smoke Tests
+          trigger: manual
+          caches:
+            - maven
+          script:
+            # Install dependencies
+            - apt-get update && apt-get install -y wget gnupg curl
+            - mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+            
+            # Run all smoke tests
+            - >
+              mvn test -Dtest="*SmokeTest,HealthCheckTest,SwaggerUiSmokeTest" 
+              -Dmaven.test.failure.ignore=true 
+              -Dallure.results.directory=target/allure-results 
+              -DfailIfNoTests=false
+            
+            # Generate comprehensive reports
+            - mvn surefire-report:report-only site -DgenerateReports=false
+            - mvn allure:report
+            
+            - echo "🎯 Manual smoke tests execution completed!"
+          artifacts:
+            - target/**

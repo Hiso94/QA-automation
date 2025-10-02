@@ -9,13 +9,7 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
   actions: read
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
 
 jobs:
   publish-reports:
@@ -26,8 +20,8 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Pages
-      uses: actions/configure-pages@v4
+    - name: Create Reports Directory
+      run: mkdir -p ./_site
       
     - name: Set up JDK 17 (for manual trigger)
       if: github.event_name == 'workflow_dispatch'
@@ -150,22 +144,21 @@ jobs:
         </html>
         EOF
         
-    - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+    - name: Upload Combined Reports
+      uses: actions/upload-artifact@v4
       with:
+        name: simple-test-reports-${{ github.run_number }}
         path: ./_site
-
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+        retention-days: 30
       
     - name: Summary
       run: |
-        echo "## 📊 Test Reports Published" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Test Reports Generated" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "✅ **Site URL**: ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Reports uploaded as artifacts** - No Pages deployment needed" >> $GITHUB_STEP_SUMMARY
         echo "🔄 **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
         echo "📅 **Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+        echo "📁 **Artifact**: \`simple-test-reports-${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Available Reports" >> $GITHUB_STEP_SUMMARY
         echo "- 📈 Surefire HTML Reports" >> $GITHUB_STEP_SUMMARY
